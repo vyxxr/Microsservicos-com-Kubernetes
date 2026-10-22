@@ -21,11 +21,81 @@ Stack: Java 17, Spring Boot 2.6.7, Spring Cloud (Eureka, Gateway, OpenFeign), Fl
 - [Docker](https://docs.docker.com/get-docker/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - Um cluster Kubernetes local, p.ex. [minikube](https://minikube.sigs.k8s.io/) ou kind
+- [Helm 3](https://helm.sh/docs/intro/install/) (para a instalação via Helm)
 - (Opcional, para rodar sem Docker) JDK 17 e MySQL
 
-## Executando no Kubernetes
+## Executando com Helm (recomendado)
 
-Os manifestos estão em `k8s/` e usam imagens já publicadas no Docker Hub (`vyxxr/java-*-k8s`).
+O chart em `helm/` instala o Eureka Server, gateway, pagamentos, pedidos, os Services/LoadBalancers e, como dependência, o MySQL do chart da Bitnami (`mysql` 12.3.5, imagem `bitnamilegacy/mysql`).
+
+### 1. Suba o cluster
+
+```bash
+minikube start
+```
+
+O MySQL do chart usa a StorageClass padrão do cluster (no minikube, `standard`), então não é preciso habilitar addons.
+
+### 2. Baixe as dependências do chart
+
+O MySQL não está versionado no repositório: ele é baixado para `helm/charts/` a partir do `Chart.yaml`/`Chart.lock`.
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm dependency update helm/
+```
+
+Isso cria `helm/charts/mysql-12.3.5.tgz`. Confira com:
+
+```bash
+helm dependency list helm/
+```
+
+O status deve aparecer como `ok`. Sem esse passo, o `helm install` falha com `found in Chart.yaml, but missing in charts/ directory: mysql`.
+
+### 3. Instale o chart
+
+```bash
+helm install alura-foods-app helm/
+```
+
+> **Importante:** use o nome de release `alura-foods-app`. O host do banco (`DB_HOST: alura-foods-app-mysql` em `values.yaml`) e o Secret com a senha (`secret.name: alura-foods-app-mysql`) são gerados pelo chart do MySQL a partir do nome do release. Se usar outro nome, ajuste os dois valores, p.ex. `--set configMap.data.DB_HOST=<release>-mysql --set secret.name=<release>-mysql`.
+
+A senha de `root` do MySQL é gerada automaticamente e guardada no Secret `alura-foods-app-mysql` (chave `mysql-root-password`), que `pagamentos` e `pedidos` leem. Os bancos `alurafood-pagamento` e `alurafood-pedidos` são criados pelos próprios serviços (`createDatabaseIfNotExist=true`). Para ver a senha:
+
+```bash
+kubectl get secret alura-foods-app-mysql -o jsonpath='{.data.mysql-root-password}' | base64 -d
+```
+
+Para validar o que será gerado antes de instalar: `helm template alura-foods-app helm/`.
+
+### 4. Aguarde os pods e exponha os serviços
+
+```bash
+kubectl get pods -w
+```
+
+Esperado: `alura-foods-app-mysql-0`, `server-0`, `server-1` e 2 réplicas de `gateway`, `pagamentos` e `pedidos`, todos `Running`. Reinícios iniciais de `pagamentos`/`pedidos` são normais enquanto o MySQL sobe.
+
+Depois siga o passo [Exponha os serviços](#4-exponha-os-serviços) (`minikube tunnel` + `kubectl get svc loadbalancer-eureka loadbalancer-gateway`) e [Testando a API](#testando-a-api).
+
+### Atualizando e removendo
+
+```bash
+helm upgrade alura-foods-app helm/     # após alterar values.yaml ou templates
+helm uninstall alura-foods-app
+```
+
+O `helm uninstall` não remove o PVC do MySQL. Se for reinstalar do zero, apague-o também, senão o banco antigo continua com a senha anterior e não bate com o novo Secret:
+
+```bash
+kubectl delete pvc data-alura-foods-app-mysql-0
+```
+
+## Executando no Kubernetes (manifestos puros)
+
+Alternativa sem Helm. Os manifestos estão em `k8s/` e usam imagens já publicadas no Docker Hub (`vyxxr/java-*-k8s`).
 
 ### 1. Suba o cluster
 
@@ -126,7 +196,7 @@ docker build -t <seu-usuario>/java-pedidos-k8s:v1    pedidos/
 docker push <seu-usuario>/java-server-k8s:v1   # idem para os demais
 ```
 
-Depois atualize o campo `image:` correspondente em `k8s/app.yaml`.
+Depois atualize o campo `image:` correspondente em `k8s/app.yaml` ou em `helm/values.yaml` (`gateway.image`, `pagamentos.image`, …).
 
 ## Executando localmente (sem Kubernetes)
 
@@ -149,7 +219,13 @@ export DB_HOST=localhost DB_USER=root DB_PASSWORD=12345
 ## Limpeza
 
 ```bash
+# Instalação via Helm
+helm uninstall alura-foods-app
+kubectl delete pvc data-alura-foods-app-mysql-0
+
+# Instalação via manifestos
 kubectl delete -f k8s/
+
 minikube delete   # opcional
 ```
 
