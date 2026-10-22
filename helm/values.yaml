@@ -1,0 +1,59 @@
+configMap:
+  name: dados
+  data:
+    SERVER_HOST: "http://server-0.server:8081/eureka,http://server-1.server:8081/eureka"
+    DB_HOST: "alura-foods-app-mysql"
+    DB_USER: "root"
+
+gateway:
+  replicas: 2
+  image: vyxxr/java-gateway-k8s:v4
+  port: 8082
+
+pagamentos:
+  replicas: 2
+  image: vyxxr/java-pagamentos-k8s:v5
+  port: 40000
+
+pedidos:
+  replicas: 2
+  image: vyxxr/java-pedidos-k8s:v5
+  port: 40001
+
+server:
+  replicas: 2
+  image: vyxxr/java-server-k8s:v4
+  port: 8081
+
+service:
+  # - name: mysql
+  #   label: mysql
+  #   port: 3306
+  - name: server
+    label: server
+    port: 8081
+  - name: pagamentos-ms
+    label: pagamentos
+    port: 40000
+  - name: pedidos-ms
+    label: pedidos
+    port: 40001
+
+loadbalancer:
+  - name: loadbalancer-eureka
+    port: 8081
+    label: server
+  - name: loadbalancer-gateway
+    port: 8082
+    label: gateway
+
+secret:
+  name: alura-foods-app-mysql
+
+global:
+  security:
+    allowInsecureImages: true
+
+mysql:
+  image:
+    repository: bitnamilegacy/mysql
