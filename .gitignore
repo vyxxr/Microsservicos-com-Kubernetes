@@ -1,0 +1,27 @@
+# Os módulos Maven (server, gateway, pagamentos, pedidos) têm seu próprio .gitignore
+# para target/ e arquivos de IDE. Este cobre a raiz do projeto.
+
+### Helm ###
+# Dependências baixadas por `helm dependency update` (o Chart.lock é versionado)
+helm/charts/
+*.tgz
+
+### Java / Maven ###
+target/
+*.class
+*.log
+
+### Variáveis de ambiente e segredos locais ###
+.env
+.env.*
+
+### IDEs ###
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+### Sistema operacional ###
+.DS_Store
+Thumbs.db
